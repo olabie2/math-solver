@@ -1,5 +1,5 @@
 <?php
-namespace App\Core;
+// namespace App\Core;
 use App\Core\View;
 
 function view(string $viewName, array $data = [])
