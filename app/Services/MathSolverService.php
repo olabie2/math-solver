@@ -8,30 +8,24 @@ use App\Services\Math\EquationParser;
 use App\Services\Math\Solvers\ArithmeticSolver;
 use App\Services\Math\Solvers\LinearSolver;
 use App\Services\Math\Solvers\QuadraticSolver;
-use App\Services\Math\Solvers\SolverInterface;
-use App\Services\Math\Solvers\ExpressionSimplifierSolver;
+use App\Services\Math\SimplifierService;
 
 class MathSolverService
 {
     private Tokenizer $tokenizer;
-
+    private SimplifierService $simplifier;
     private array $solvers;
 
     public function __construct()
     {
         $this->tokenizer = new Tokenizer();
-
+        $this->simplifier = new SimplifierService();
         $shuntingYardParser = new Parser();
-
         $equationParser = new EquationParser($shuntingYardParser);
 
         $this->solvers = [
             new QuadraticSolver($equationParser),
-            
             new LinearSolver($equationParser),
-            
-            new ExpressionSimplifierSolver(),
-            
             new ArithmeticSolver($shuntingYardParser),
         ];
     }
@@ -43,18 +37,22 @@ class MathSolverService
             'expression' => $expression,
             'solution' => null,
             'solutions' => [],
-            'steps' => [], 
+            'steps' => [],
             'result' => null,
             'error' => null,
         ];
 
         try {
-            $tokens = $this->tokenizer->tokenize($expression);
+            $originalTokens = $this->tokenizer->tokenize($expression);
 
-            if (empty($tokens)) {
+            if (empty($originalTokens)) {
                 $result['error'] = 'Invalid expression. Could not understand the input.';
                 return $result;
             }
+
+            $simplifiedTokens = $this->simplifier->simplify($originalTokens);
+            
+            $tokens = $simplifiedTokens;
 
             foreach ($this->solvers as $solver) {
                 if ($solver->canSolve($tokens)) {

@@ -49,6 +49,9 @@ class ExpressionSimplifierSolver implements SolverInterface
             $baseResult['result'] = $finalResult;
             $baseResult['steps'] = $steps;
 
+            $tokenizer = new \App\Services\Math\Tokenizer();
+            $baseResult['simplified_tokens'] = $tokenizer->tokenize($finalResult);
+
         } catch (Exception $e) {
             $baseResult['error'] = $e->getMessage();
         }
