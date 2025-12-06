@@ -29,7 +29,14 @@ class LinearSolver implements SolverInterface
 
     public function solve(array $tokens, string $originalExpression): array
     {
-        $baseResult = [ 'type' => 'linear_equation', 'expression' => $originalExpression, 'variable' => null, 'solution' => null, 'steps' => [], 'error' => null ];
+        $baseResult = [ 
+            'type' => 'linear_equation', 
+            'expression' => $originalExpression, 
+            'variable' => null, 
+            'solution' => null, 
+            'steps' => [], 
+            'error' => null 
+        ];
         
         try {
             $variableName = $this->findVariable($tokens);
@@ -39,37 +46,55 @@ class LinearSolver implements SolverInterface
             $baseResult['variable'] = $variableName;
             
             $steps = [];
-            $steps[] = "Start with the original equation: <strong>{$originalExpression}</strong>";
+            $steps[] = "Start with the original equation: <math-field readonly>{$originalExpression}</math-field>";
 
             $sides = $this->parser->parse($tokens);
             
             $lhsPoly = $this->evaluateAsPolynomial($sides['lhs'], $variableName);
             $rhsPoly = $this->evaluateAsPolynomial($sides['rhs'], $variableName);
 
-            $steps[] = "The goal is to isolate the variable '{$variableName}'. First, we simplify both sides of the equation.";
-            $steps[] = "The Left-Hand Side (LHS) simplifies to: <strong>" . $lhsPoly->toString($variableName) . "</strong>";
-            $steps[] = "The Right-Hand Side (RHS) simplifies to: <strong>" . $rhsPoly->toString($variableName) . "</strong>";
+            $steps[] = "Simplify both sides of the equation to isolate the variable '<math-field readonly>{$variableName}</math-field>'.";
+            $steps[] = "Left-Hand Side (LHS): <math-field readonly>" . $lhsPoly->toLatex($variableName) . "</math-field>";
+            $steps[] = "Right-Hand Side (RHS): <math-field readonly>" . $rhsPoly->toLatex($variableName) . "</math-field>";
 
             $rearrangedPoly = $lhsPoly->subtract($rhsPoly);
-            $steps[] = "Next, we move all terms to one side to set the equation to zero. This gives us the standard form <i>Ax + B = 0</i>.";
-            $steps[] = "Rearranged equation: <strong>" . $rearrangedPoly->toString($variableName) . " = 0</strong>";
+            $steps[] = "Move all terms to one side (subtract RHS from both sides): <math-field readonly>" . $rearrangedPoly->toLatex($variableName) . " = 0</math-field>";
 
             $a = $rearrangedPoly->getCoefficient(1);
             $b = $rearrangedPoly->getCoefficient(0);
 
+            // Edge case: coefficient of variable is zero (0x + b = 0)
             if ($a->isZero()) {
-                if ($b->isZero()) throw new Exception("This equation simplifies to 0 = 0, which means there are infinite solutions.");
-                else throw new Exception("This equation is a contradiction (e.g., 5 = 0), which means there is no solution.");
+                if ($b->isZero()) {
+                    // 0x + 0 = 0  →  0 = 0 (infinite solutions)
+                    $steps[] = "The equation simplifies to <math-field readonly>0 = 0</math-field>, which is always true.";
+                    $steps[] = "<strong>Result:</strong> This equation has <strong>infinitely many solutions</strong>. Any value of <math-field readonly>{$variableName}</math-field> is a solution.";
+                    
+                    $baseResult['type'] = 'infinite_solutions';
+                    $baseResult['solution'] = 'All real numbers';
+                    $baseResult['steps'] = $steps;
+                    return $baseResult;
+                } else {
+                    // 0x + 5 = 0  →  5 = 0 (no solution - contradiction)
+                    $steps[] = "The equation simplifies to <math-field readonly>" . $b->toLatex() . " = 0</math-field>, which is a contradiction.";
+                    $steps[] = "<strong>Result:</strong> This equation has <strong>no solution</strong>. It is inconsistent.";
+                    
+                    $baseResult['type'] = 'no_solution';
+                    $baseResult['solution'] = 'No solution';
+                    $baseResult['steps'] = $steps;
+                    return $baseResult;
+                }
             }
 
             $solution = $b->negate()->divide($a);
-            $steps[] = "Now, we isolate '{$variableName}'. We move the constant term to the other side: <strong>" . $a . $variableName . " = " . $b->negate() . "</strong>";
-            $steps[] = "Finally, we divide by the coefficient of '{$variableName}' to find the solution.";
-            $steps[] = "{$variableName} = (" . $b->negate() . ") / (" . $a . ")";
+            
+            $steps[] = "This is a linear equation in standard form <math-field readonly>A{$variableName} + B = 0</math-field> where <math-field readonly>A = " . $a->toLatex() . "</math-field> and <math-field readonly>B = " . $b->toLatex() . "</math-field>.";
+            $steps[] = "Isolate <math-field readonly>{$variableName}</math-field>: Move constant to the other side: <math-field readonly>" . $a->toLatex() . "{$variableName} = " . $b->negate()->toLatex() . "</math-field>";
+            $steps[] = "Divide both sides by the coefficient: <math-field readonly>{$variableName} = \\frac{" . $b->negate()->toLatex() . "}{" . $a->toLatex() . "}</math-field>";
+            $steps[] = "<strong>Final Answer:</strong> <math-field readonly style='font-size:1.2em;'>{$variableName} = " . $solution->toLatex() . "</math-field>";
             
             $baseResult['solution'] = (string)$solution;
             $baseResult['steps'] = $steps;
-            $baseResult['steps'][] = "The final answer is: <strong>{$variableName} = {$solution}</strong>";
 
         } catch (Exception $e) {
             $baseResult['error'] = $e->getMessage();

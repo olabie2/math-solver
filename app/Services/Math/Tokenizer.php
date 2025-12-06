@@ -3,12 +3,14 @@ namespace App\Services\Math;
 
 /**
  * Converts an expression string into an array of Token objects.
- * This version handles commas, robust LaTeX normalization, and expanded
- * rules for implicit multiplication.
+ * This version handles commas, robust LaTeX normalization, scientific notation,
+ * and expanded rules for implicit multiplication.
  */
 class Tokenizer
 {
-    private const TOKEN_PATTERN = '/(\d*\.?\d+)|(log|sin|cos|tan|sqrt)|([a-zA-Z])|([\+\-\*\/\^])|([\(\),])|(=)|(pi|e|i)/i';
+    // Updated pattern to support scientific notation (e.g., 1e6, 1.5e-3)
+    // The 'e' for Euler's number is handled separately from scientific notation 'e'
+    private const TOKEN_PATTERN = '/(\d+\.?\d*[eE][+-]?\d+|\d*\.?\d+)|(log|sin|cos|tan|sqrt)|([a-zA-Z])|([\\+\\-\\*\\/\\^])|([\(\),])|(=)/i';
 
     /**
      * Converts an expression string into an array of Token objects.
@@ -23,12 +25,16 @@ class Tokenizer
         $tokens = [];
         foreach ($matches as $match) {
             $value = $match[0];
-            if (is_numeric($value)) {
+            // Check for scientific notation or regular numbers
+            if (preg_match('/^\d+\.?\d*[eE][+-]?\d+$/', $value) || is_numeric($value)) {
                 $tokens[] = new Token(Token::T_NUMBER, $value);
             } elseif (in_array(strtolower($value), ['log', 'sin', 'cos', 'tan', 'sqrt'])) {
                 $tokens[] = new Token(Token::T_FUNCTION, strtolower($value));
-            } elseif (in_array(strtolower($value), ['e', 'i', 'pi'])) {
+            } elseif (in_array(strtolower($value), ['i', 'pi'])) {
                 $tokens[] = new Token(Token::T_CONSTANT, strtolower($value));
+            } elseif (strtolower($value) === 'e') {
+                // 'e' as a standalone letter is Euler's number constant
+                $tokens[] = new Token(Token::T_CONSTANT, 'e');
             } elseif (in_array($value, ['+', '-', '*', '/', '^'])) {
                 $tokens[] = new Token(Token::T_OPERATOR, $value);
             } elseif ($value === '(') {
@@ -101,9 +107,9 @@ class Tokenizer
         $expression = preg_replace('/\\\\sqrt\[(.+?)\]\{(.+?)\}/', '($2)^(1/($1))', $expression);
         // Handle both \sqrt{x} and \sqrt x
         $expression = preg_replace('/\\\\sqrt\{(.+?)\}/', 'sqrt($1)', $expression);
-        $expression = preg_replace('/\\\\sqrt\s*([a-zA-Z0-9\.]+)/', 'sqrt($1)', $expression);
+        $expression = preg_replace('/\\\\sqrt\s*([a-zA-Z0-9\\.]+)/', 'sqrt($1)', $expression);
 
-        $expression = preg_replace('/\{([a-zA-Z0-9\.]+)\}/', '$1', $expression);
+        $expression = preg_replace('/\{([a-zA-Z0-9\\.]+)\}/', '$1', $expression);
         $expression = str_replace(' ', '', $expression);
 
         return $expression;

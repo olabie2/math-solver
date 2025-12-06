@@ -36,12 +36,17 @@ class ArithmeticSolver implements SolverInterface
      */
     public function solve(array $tokens, string $originalExpression): array
     {
-        // Add a new 'steps' array to the base result.
-        $baseResult = [ 'type' => 'arithmetic_evaluation', 'expression' => $originalExpression, 'result' => null, 'steps' => [], 'error' => null ];
+        $baseResult = [ 
+            'type' => 'arithmetic_evaluation', 
+            'expression' => $originalExpression, 
+            'result' => null, 
+            'steps' => [], 
+            'error' => null 
+        ];
         
         try {
-            $steps = []; // This array will hold our log.
-            $result = $this->evaluate($tokens, $steps); // Pass $steps by reference.
+            $steps = [];
+            $result = $this->evaluate($tokens, $steps);
             
             $baseResult['result'] = (string)$result;
             $baseResult['steps'] = $steps;
@@ -53,19 +58,15 @@ class ArithmeticSolver implements SolverInterface
     }
 
     /**
-     * Evaluates the expression and populates a steps array that explains the process.
-     * @param array $tokens The tokens to evaluate.
-     * @param array &$steps An array passed by reference to be filled with step-by-step explanations.
-     * @return Complex The final result of the evaluation.
+     * Evaluates the expression and populates a steps array with LaTeX-formatted explanations.
      */
     public function evaluate(array $tokens, array &$steps = []): Complex
     {
         $rpnQueue = $this->parser->parse($tokens);
         
-        // Initial logging
-        $rpnString = implode(' ', array_map(fn($t) => $t->value, $rpnQueue));
-        $steps[] = "1. Parse expression into Reverse Polish Notation (RPN): " . $rpnString;
-        $stepCounter = 2;
+        // Initial step - show the expression being evaluated
+        $infixString = implode(' ', array_map(fn($t) => $this->tokenToLatex($t), $tokens));
+        $steps[] = "Evaluate the expression: <math-field readonly>{$infixString}</math-field>";
 
         $stack = [];
         foreach ($rpnQueue as $token) {
@@ -80,13 +81,14 @@ class ArithmeticSolver implements SolverInterface
                 
                 $result = $this->applyOperator($token->value, $op1, $op2);
                 
-                // Log the operation
+                // Log the operation with LaTeX formatting
                 if ($isUnary) {
-                    $steps[] = "{$stepCounter}. Apply unary operator '{$token->value}' to {$op2}: {$result}";
+                    $opSymbol = $token->value === 'neg' ? '-' : '+';
+                    $steps[] = "Apply negation: <math-field readonly>{$opSymbol}({$op2->toLatex()}) = {$result->toLatex()}</math-field>";
                 } else {
-                    $steps[] = "{$stepCounter}. Calculate {$op1} {$token->value} {$op2}: {$result}";
+                    $opSymbol = $this->getLatexOperator($token->value);
+                    $steps[] = "Calculate: <math-field readonly>{$op1->toLatex()} {$opSymbol} {$op2->toLatex()} = {$result->toLatex()}</math-field>";
                 }
-                $stepCounter++;
                 
                 $stack[] = $result;
 
@@ -103,10 +105,9 @@ class ArithmeticSolver implements SolverInterface
 
                 $result = $this->applyFunction($funcName, $args);
 
-                // Log the function application
-                $argString = implode(', ', $args);
-                $steps[] = "{$stepCounter}. Apply function {$funcName}({$argString}): {$result}";
-                $stepCounter++;
+                // Log the function application with LaTeX
+                $latexFunc = $this->getLatexFunction($funcName, $args);
+                $steps[] = "Evaluate function: <math-field readonly>{$latexFunc} = {$result->toLatex()}</math-field>";
 
                 $stack[] = $result;
             }
@@ -115,8 +116,60 @@ class ArithmeticSolver implements SolverInterface
         if (count($stack) !== 1) throw new Exception('Malformed expression.');
         
         $finalResult = array_pop($stack);
-        $steps[] = "Final Answer: " . $finalResult;
+        $steps[] = "<strong>Final Answer:</strong> <math-field readonly style='display:inline-block;font-size:1.2em;'>{$finalResult->toLatex()}</math-field>";
         return $finalResult;
+    }
+    
+    /**
+     * Converts operator symbols to LaTeX format
+     */
+    private function getLatexOperator(string $op): string
+    {
+        return match($op) {
+            '*' => '\\times',
+            '/' => '\\div',
+            '^' => '^',
+            default => $op
+        };
+    }
+    
+    /**
+     * Formats a function call in LaTeX
+     */
+    private function getLatexFunction(string $funcName, array $args): string
+    {
+        $argsLatex = array_map(fn($a) => $a->toLatex(), $args);
+        
+        return match($funcName) {
+            'sqrt' => "\\sqrt{{$argsLatex[0]}}",
+            'sin' => "\\sin({$argsLatex[0]})",
+            'cos' => "\\cos({$argsLatex[0]})",
+            'tan' => "\\tan({$argsLatex[0]})",
+            'log' => "\\log_{{$argsLatex[1]}}({$argsLatex[0]})",
+            default => "{$funcName}(" . implode(', ', $argsLatex) . ")"
+        };
+    }
+    
+    /**
+     * Convert a token to LaTeX representation for display
+     */
+    private function tokenToLatex(Token $token): string
+    {
+        return match($token->type) {
+            Token::T_CONSTANT => match($token->value) {
+                'pi' => '\\pi',
+                'e' => 'e',
+                'i' => 'i',
+                default => $token->value
+            },
+            Token::T_OPERATOR => match($token->value) {
+                '*' => '\\times',
+                '/' => '\\div',
+                default => $token->value
+            },
+            Token::T_FUNCTION => '\\' . $token->value,
+            default => $token->value
+        };
     }
     
     private function applyOperator(string $op, ?Complex $a, Complex $b): Complex
@@ -129,15 +182,10 @@ class ArithmeticSolver implements SolverInterface
             case '^': return $a->pow($b);
             case 'neg': return $b->negate();
             case 'pos': return $b;
-            
-            // NEW: Handle the 'degree' operator.
-            // It's a unary operator, so it only uses the second operand ($b).
             case 'degree':
-                // The degree operator is only meaningful for real numbers.
                 if ($b->imaginary != 0) {
                     throw new Exception("The degree operator can only be applied to real numbers.");
                 }
-                // Convert the real part to radians and return a new Complex number.
                 return new Complex(deg2rad($b->real));
         }
         throw new Exception("Internal Error: Unknown operator '$op'");

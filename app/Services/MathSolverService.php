@@ -50,13 +50,11 @@ class MathSolverService
                 return $result;
             }
 
-            $simplifiedTokens = $this->simplifier->simplify($originalTokens);
-            
-            $tokens = $simplifiedTokens;
-
+            // Use original tokens for canSolve() detection (in case simplifier removes variables)
+            // But pass original tokens to solve() so solver can handle edge cases properly
             foreach ($this->solvers as $solver) {
-                if ($solver->canSolve($tokens)) {
-                    return array_merge($result, $solver->solve($tokens, $expression));
+                if ($solver->canSolve($originalTokens)) {
+                    return array_merge($result, $solver->solve($originalTokens, $expression));
                 }
             }
 

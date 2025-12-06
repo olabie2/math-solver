@@ -17,19 +17,20 @@ class Complex
 
     public function toLatex(): string
     {
-        $real = $this->real;
-        $imag = $this->imaginary;
+        $real = $this->formatNumber($this->real);
+        $imag = $this->formatNumber($this->imaginary);
+        $imagFloat = (float)$imag;
 
-        if ($imag == 0) return (string)$real;
-        if ($real == 0) {
-            if ($imag == 1) return 'i';
-            if ($imag == -1) return '-i';
+        if ($imagFloat == 0) return $real;
+        if ((float)$real == 0) {
+            if ($imagFloat == 1) return 'i';
+            if ($imagFloat == -1) return '-i';
             return $imag . 'i';
         }
 
-        $sign = $imag < 0 ? ' - ' : ' + ';
-        $imagAbs = abs($imag);
-        $imagStr = ($imagAbs == 1) ? 'i' : $imagAbs . 'i';
+        $sign = $imagFloat < 0 ? ' - ' : ' + ';
+        $imagAbs = abs($imagFloat);
+        $imagStr = ($imagAbs == 1) ? 'i' : $this->formatNumber($imagAbs) . 'i';
 
         return "({$real}{$sign}{$imagStr})";
     }
@@ -179,24 +180,49 @@ class Complex
 
     public function __toString(): string
     {
-        $real = round($this->real, 5);
-        $imag = round($this->imaginary, 5);
+        $real = $this->formatNumber($this->real);
+        $imag = $this->formatNumber($this->imaginary);
+        $imagFloat = (float)$imag;
 
-        if ($imag == 0) {
-            return (string)$real;
+        if ($imagFloat == 0) {
+            return $real;
         }
 
-        if ($real == 0) {
-            if ($imag == 1) return 'i';
-            if ($imag == -1) return '-i';
+        if ((float)$real == 0) {
+            if ($imagFloat == 1) return 'i';
+            if ($imagFloat == -1) return '-i';
             return $imag . 'i';
         }
 
-        $sign = $imag < 0 ? ' - ' : ' + ';
-        $imagAbs = abs($imag);
+        $sign = $imagFloat < 0 ? ' - ' : ' + ';
+        $imagAbs = abs($imagFloat);
 
-        $imagStr = ($imagAbs == 1) ? 'i' : $imagAbs . 'i';
+        $imagStr = ($imagAbs == 1) ? 'i' : $this->formatNumber($imagAbs) . 'i';
 
         return $real . $sign . $imagStr;
+    }
+    
+    /**
+     * Format a number cleanly: remove trailing zeros, handle -0, detect integers
+     */
+    private function formatNumber(float $value): string
+    {
+        // Handle -0 case
+        if ($value == 0) {
+            return '0';
+        }
+        
+        // Round to reasonable precision (10 decimal places)
+        $rounded = round($value, 10);
+        
+        // Check if it's effectively an integer
+        if (abs($rounded - round($rounded)) < 1e-9) {
+            return (string)(int)round($rounded);
+        }
+        
+        // Format with up to 10 decimal places, then trim trailing zeros
+        $formatted = rtrim(rtrim(sprintf('%.10f', $rounded), '0'), '.');
+        
+        return $formatted;
     }
 }
