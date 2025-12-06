@@ -17,26 +17,30 @@ class Complex
 
     public function toLatex(): string
     {
-        $real = $this->formatNumber($this->real);
-        $imag = $this->formatNumber($this->imaginary);
-        $imagFloat = (float)$imag;
+        $real = $this->formatNumberLatex($this->real);
+        $imag = $this->formatNumberLatex($this->imaginary);
+        $imagFloat = $this->imaginary;
 
-        if ($imagFloat == 0) return $real;
-        if ((float)$real == 0) {
-            if ($imagFloat == 1) return 'i';
-            if ($imagFloat == -1) return '-i';
+        if (abs($imagFloat) < 1e-10) return $real;
+        if (abs($this->real) < 1e-10) {
+            if (abs($imagFloat - 1) < 1e-10) return 'i';
+            if (abs($imagFloat + 1) < 1e-10) return '-i';
             return $imag . 'i';
         }
 
         $sign = $imagFloat < 0 ? ' - ' : ' + ';
         $imagAbs = abs($imagFloat);
-        $imagStr = ($imagAbs == 1) ? 'i' : $this->formatNumber($imagAbs) . 'i';
+        $imagStr = (abs($imagAbs - 1) < 1e-10) ? 'i' : $this->formatNumberLatex($imagAbs) . 'i';
 
         return "({$real}{$sign}{$imagStr})";
     }
+    
+    /**
+     * Check if this complex number is effectively zero (within precision threshold)
+     */
     public function isZero(): bool
     {
-        return $this->real == 0.0 && $this->imaginary == 0.0;
+        return abs($this->real) < 1e-10 && abs($this->imaginary) < 1e-10;
     }
 
     public function inverse(): Complex
@@ -207,8 +211,8 @@ class Complex
      */
     private function formatNumber(float $value): string
     {
-        // Handle -0 case
-        if ($value == 0) {
+        // Handle near-zero case
+        if (abs($value) < 1e-10) {
             return '0';
         }
         
@@ -224,5 +228,78 @@ class Complex
         $formatted = rtrim(rtrim(sprintf('%.10f', $rounded), '0'), '.');
         
         return $formatted;
+    }
+    
+    /**
+     * Format a number for LaTeX output with fraction detection
+     */
+    private function formatNumberLatex(float $value): string
+    {
+        // Handle near-zero case
+        if (abs($value) < 1e-10) {
+            return '0';
+        }
+        
+        $sign = $value < 0 ? '-' : '';
+        $absValue = abs($value);
+        
+        // Check if it's effectively an integer
+        $rounded = round($absValue, 10);
+        if (abs($rounded - round($rounded)) < 1e-9) {
+            return $sign . (string)(int)round($rounded);
+        }
+        
+        // Try to find a simple fraction representation (denominator up to 12)
+        $fraction = $this->tryFraction($absValue);
+        if ($fraction !== null) {
+            return $sign . $fraction;
+        }
+        
+        // Fall back to decimal, but limit to 6 significant figures for readability
+        $formatted = rtrim(rtrim(sprintf('%.6f', $rounded), '0'), '.');
+        return $sign . $formatted;
+    }
+    
+    /**
+     * Try to express a decimal as a simple fraction
+     * Returns LaTeX fraction string or null if no simple fraction found
+     */
+    private function tryFraction(float $value): ?string
+    {
+        // Common denominators to check
+        $denominators = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 100];
+        
+        foreach ($denominators as $denom) {
+            $numerator = $value * $denom;
+            $roundedNum = round($numerator);
+            
+            // Check if multiplying by denominator gives an integer
+            if (abs($numerator - $roundedNum) < 1e-8 && $roundedNum != 0) {
+                // Simplify the fraction
+                $gcd = $this->gcd((int)abs($roundedNum), $denom);
+                $num = (int)($roundedNum / $gcd);
+                $den = $denom / $gcd;
+                
+                if ($den == 1) {
+                    return (string)$num;
+                }
+                return "\\frac{" . abs($num) . "}{" . $den . "}";
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Greatest common divisor
+     */
+    private function gcd(int $a, int $b): int
+    {
+        while ($b != 0) {
+            $temp = $b;
+            $b = $a % $b;
+            $a = $temp;
+        }
+        return $a;
     }
 }

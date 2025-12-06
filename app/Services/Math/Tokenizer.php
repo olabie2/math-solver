@@ -4,11 +4,11 @@ namespace App\Services\Math;
 /**
  * Converts an expression string into an array of Token objects.
  * This version handles commas, robust LaTeX normalization, scientific notation,
- * and expanded rules for implicit multiplication.
+ * unicode superscripts, and expanded rules for implicit multiplication.
  */
 class Tokenizer
 {
-    // Updated pattern to support scientific notation (e.g., 1e6, 1.5e-3)
+    // Pattern to support scientific notation (e.g., 1e6, 1.5e-3)
     // The 'e' for Euler's number is handled separately from scientific notation 'e'
     private const TOKEN_PATTERN = '/(\d+\.?\d*[eE][+-]?\d+|\d*\.?\d+)|(log|sin|cos|tan|sqrt)|([a-zA-Z])|([\\+\\-\\*\\/\\^])|([\(\),])|(=)/i';
 
@@ -94,22 +94,37 @@ class Tokenizer
      */
     private function normalize(string $rawExpression): string
     {
+        // Unicode superscript to ^n conversions (must be done first!)
+        $superscripts = [
+            '⁰' => '^0', '¹' => '^1', '²' => '^2', '³' => '^3', '⁴' => '^4',
+            '⁵' => '^5', '⁶' => '^6', '⁷' => '^7', '⁸' => '^8', '⁹' => '^9',
+        ];
+        $expression = str_replace(array_keys($superscripts), array_values($superscripts), $rawExpression);
+        
+        // LaTeX command replacements
         $replacements = [
             '\\times'   => '*', '\\div'     => '/', '\\cdot'    => '*',
             '\\left'    => '', '\\right'   => '',  '\\sin'     => 'sin',
             '\\cos'     => 'cos', '\\tan'     => 'tan', '\\log'     => 'log',
             '\\pi'      => 'pi',
         ];
-        $expression = str_replace(array_keys($replacements), array_values($replacements), $rawExpression);
+        $expression = str_replace(array_keys($replacements), array_values($replacements), $expression);
 
+        // LaTeX \frac{a}{b} to (a)/(b)
         $expression = preg_replace('/\\\\frac\{(.+?)\}\{(.+?)\}/', '($1)/($2)', $expression);
         $expression = preg_replace('/\\\\frac(.)(.)/', '($1)/($2)', $expression);
+        
+        // LaTeX \sqrt[n]{x} to (x)^(1/(n))
         $expression = preg_replace('/\\\\sqrt\[(.+?)\]\{(.+?)\}/', '($2)^(1/($1))', $expression);
+        
         // Handle both \sqrt{x} and \sqrt x
         $expression = preg_replace('/\\\\sqrt\{(.+?)\}/', 'sqrt($1)', $expression);
         $expression = preg_replace('/\\\\sqrt\s*([a-zA-Z0-9\\.]+)/', 'sqrt($1)', $expression);
 
+        // Remove braces around simple expressions
         $expression = preg_replace('/\{([a-zA-Z0-9\\.]+)\}/', '$1', $expression);
+        
+        // Remove spaces
         $expression = str_replace(' ', '', $expression);
 
         return $expression;

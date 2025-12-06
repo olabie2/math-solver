@@ -4,6 +4,7 @@ namespace App\Services\Math\Solvers;
 
 use App\Services\Math\Complex;
 use App\Services\Math\EquationParser;
+use App\Services\Math\HighPrecisionQuadratic;
 use App\Services\Math\Polynomial;
 use App\Services\Math\Token;
 use Exception;
@@ -58,8 +59,43 @@ class QuadraticSolver implements SolverInterface
             $sides = $this->parser->parse($tokens);
             $poly = $this->evaluateAsPolynomial($sides['lhs'], $variableName)->subtract($this->evaluateAsPolynomial($sides['rhs'], $variableName));
 
-            if ($poly->getCoefficient(2)->isZero()) {
-                throw new Exception("This is not a quadratic equation.");
+            // Check if it's a degenerate quadratic (a ≈ 0)
+            $a = $poly->getCoefficient(2);
+            $b = $poly->getCoefficient(1);
+            $c = $poly->getCoefficient(0);
+            
+            if ($a->isZero()) {
+                // This is actually a linear equation (or simpler)
+                $steps[] = "The coefficient of <math-field readonly>{$variableName}^2</math-field> is zero, so this is actually a linear equation.";
+                
+                if ($b->isZero()) {
+                    // No variable terms at all: c = 0
+                    if ($c->isZero()) {
+                        $steps[] = "The equation simplifies to <math-field readonly>0 = 0</math-field>, which is always true.";
+                        $steps[] = "<strong>Result:</strong> This equation has <strong>infinitely many solutions</strong>.";
+                        $baseResult['type'] = 'infinite_solutions';
+                        $baseResult['solutions'] = ['All real numbers'];
+                        $baseResult['steps'] = $steps;
+                        return $baseResult;
+                    } else {
+                        $steps[] = "The equation simplifies to <math-field readonly>" . $c->toLatex() . " = 0</math-field>, which is a contradiction.";
+                        $steps[] = "<strong>Result:</strong> This equation has <strong>no solution</strong>.";
+                        $baseResult['type'] = 'no_solution';
+                        $baseResult['solutions'] = [];
+                        $baseResult['error'] = 'No solution exists (contradiction)';
+                        $baseResult['steps'] = $steps;
+                        return $baseResult;
+                    }
+                }
+                
+                // Linear equation: bx + c = 0  →  x = -c/b
+                $solution = $c->negate()->divide($b);
+                $steps[] = "Solving the linear equation: <math-field readonly>" . $b->toLatex() . "{$variableName} + " . $c->toLatex() . " = 0</math-field>";
+                $steps[] = "<strong>Solution:</strong> <math-field readonly>{$variableName} = " . $solution->toLatex() . "</math-field>";
+                $baseResult['type'] = 'linear_from_quadratic';
+                $baseResult['solutions'] = [(string)$solution];
+                $baseResult['steps'] = $steps;
+                return $baseResult;
             }
 
             $steps[] = "Rearrange into standard form <math-field readonly>ax^2 + bx + c = 0</math-field>.";
@@ -84,22 +120,38 @@ class QuadraticSolver implements SolverInterface
             if ($discriminant->isZero()) {
                 $steps[] = "Since the discriminant is <strong>zero</strong>, there is exactly <strong>one real root</strong>. This also means the original equation is a <strong>perfect square</strong>.";
                 $solution = $neg_b->divide($two_a);
-                $baseResult['solutions'] = [(string)$solution];
+                $baseResult['solutions'] = [$solution->toLatex()];
                 $steps[] = "The formula simplifies to <math-field readonly>x = \\frac{-b}{2a}</math-field>:";
                 $steps[] = "<math-field readonly>x = \\frac{" . $neg_b->toLatex() . "}{" . $two_a->toLatex() . "} = " . $solution->toLatex() . "</math-field>";
-            } elseif ($discriminant->real > 0 && $discriminant->imaginary == 0) {
+            } elseif ($discriminant->real > 0 && abs($discriminant->imaginary) < 1e-10) {
                 $steps[] = "Since the discriminant is <strong>positive</strong>, there are <strong>two distinct real roots</strong>.";
-                $solution1 = $neg_b->add($sqrt_discriminant)->divide($two_a);
-                $solution2 = $neg_b->subtract($sqrt_discriminant)->divide($two_a);
-                $baseResult['solutions'] = array_unique([(string)$solution1, (string)$solution2]);
-                $steps[] = "The two solutions are:";
-                $steps[] = "<math-field readonly>x_1 = \\frac{" . $neg_b->toLatex() . " + " . $sqrt_discriminant->toLatex() . "}{" . $two_a->toLatex() . "} = " . $solution1->toLatex() . "</math-field>";
-                $steps[] = "<math-field readonly>x_2 = \\frac{" . $neg_b->toLatex() . " - " . $sqrt_discriminant->toLatex() . "}{" . $two_a->toLatex() . "} = " . $solution2->toLatex() . "</math-field>";
+                
+                // Use high-precision library to avoid floating-point precision issues
+                // This handles edge cases like x² - 2x + 1e-12 = 0 correctly
+                $aReal = $a->real;
+                $bReal = $b->real;
+                $cReal = $c->real;
+                
+                $highPrecisionRoots = HighPrecisionQuadratic::solveReal($aReal, $bReal, $cReal);
+                
+                if ($highPrecisionRoots !== null) {
+                    $baseResult['solutions'] = array_unique($highPrecisionRoots);
+                    $steps[] = "Using high-precision arithmetic for accurate results:";
+                    $steps[] = "<math-field readonly>x_1 = " . $highPrecisionRoots[0] . "</math-field>";
+                    $steps[] = "<math-field readonly>x_2 = " . $highPrecisionRoots[1] . "</math-field>";
+                } else {
+                    // Fallback to standard calculation
+                    $solution1 = $neg_b->add($sqrt_discriminant)->divide($two_a);
+                    $solution2 = $neg_b->subtract($sqrt_discriminant)->divide($two_a);
+                    $baseResult['solutions'] = array_unique([$solution1->toLatex(), $solution2->toLatex()]);
+                    $steps[] = "<math-field readonly>x_1 = " . $solution1->toLatex() . "</math-field>";
+                    $steps[] = "<math-field readonly>x_2 = " . $solution2->toLatex() . "</math-field>";
+                }
             } else {
                 $steps[] = "Since the discriminant is <strong>negative or complex</strong>, there are <strong>two complex roots</strong>.";
                 $solution1 = $neg_b->add($sqrt_discriminant)->divide($two_a);
                 $solution2 = $neg_b->subtract($sqrt_discriminant)->divide($two_a);
-                $baseResult['solutions'] = array_unique([(string)$solution1, (string)$solution2]);
+                $baseResult['solutions'] = array_unique([$solution1->toLatex(), $solution2->toLatex()]);
                 $steps[] = "The two complex solutions are:";
                 $steps[] = "<math-field readonly>x_1 = " . $solution1->toLatex() . "</math-field>";
                 $steps[] = "<math-field readonly>x_2 = " . $solution2->toLatex() . "</math-field>";

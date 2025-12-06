@@ -3,5 +3,8 @@
     "psr-4": {
       "App\\": "app/"
     }
+  },
+  "require": {
+    "brick/math": "^0.14.1"
   }
 }
